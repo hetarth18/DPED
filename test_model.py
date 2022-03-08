@@ -8,6 +8,8 @@ from models import resnet
 import utils
 import os
 import sys
+from skimage.transform import resize as resizer
+import time
 
 tf.compat.v1.disable_v2_behavior()
 
@@ -19,6 +21,10 @@ res_sizes = utils.get_resolutions()
 
 # get the specified image resolution
 IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_SIZE = utils.get_specified_res(res_sizes, phone, resolution)
+print(IMAGE_HEIGHT)
+print(IMAGE_WIDTH)
+print(IMAGE_SIZE)
+print(res_sizes[phone][1], res_sizes[phone][0])
 
 # disable gpu if specified
 config = tf.compat.v1.ConfigProto(device_count={'GPU': 0}) if use_gpu == "false" else None
@@ -34,6 +40,7 @@ with tf.compat.v1.Session(config=config) as sess:
 
     test_dir = dped_dir + phone.replace("_orig", "") + "/test_data/full_size_test_images/"
     test_photos = [f for f in os.listdir(test_dir) if os.path.isfile(test_dir + f)]
+    test_photos = [x for x in test_photos if not x.startswith(".")]
 
     if test_subset == "small":
         # use five first images only
@@ -49,25 +56,36 @@ with tf.compat.v1.Session(config=config) as sess:
 
             # load training image and crop it if necessary
 
-            print("Testing original " + phone.replace("_orig", "") + " model, processing image " + photo)
-            image = np.float16(np.array(Image.fromarray(imageio.imread(test_dir + photo))
-                                        .resize([res_sizes[phone][1], res_sizes[phone][0]]))) / 255
+            raw_image = Image.fromarray(imageio.imread(test_dir + photo))
+            og_size = raw_image.size
 
+            print("Testing original " + phone.replace("_orig", "") + " model, processing image " + photo)
+            image = np.float16(np.array(raw_image.resize([res_sizes[phone][1], res_sizes[phone][0]]))) / 255
+            # image = np.float16(np.array(raw_image).resize([res_sizes[phone][1], res_sizes[phone][0]])) / 255
             image_crop = utils.extract_crop(image, resolution, phone, res_sizes)
             image_crop_2d = np.reshape(image_crop, [1, IMAGE_SIZE])
 
             # get enhanced image
 
+            start = time.time()
             enhanced_2d = sess.run(enhanced, feed_dict={x_: image_crop_2d})
             enhanced_image = np.reshape(enhanced_2d, [IMAGE_HEIGHT, IMAGE_WIDTH, 3])
+            end = time.time()
+            print(end - start)
+            
+            print(enhanced_image.shape)
+            print(og_size)
+            # enhanced_image = resizer(enhanced_image, (og_size[1],og_size[0]))
+            # print(enhanced_image.shape)
 
-            before_after = np.hstack((image_crop, enhanced_image))
+
+            # before_after = np.hstack((image_crop, enhanced_image))
             photo_name = photo.rsplit(".", 1)[0]
 
-            # save the results as .png images
+            # # # save the results as .png images
 
             imageio.imwrite("visual_results/" + phone + "_" + photo_name + "_enhanced.png", enhanced_image)
-            imageio.imwrite("visual_results/" + phone + "_" + photo_name + "_before_after.png", before_after)
+            # imageio.imwrite("visual_results/" + phone + "_" + photo_name + "_before_after.png", before_after)
 
     else:
 
